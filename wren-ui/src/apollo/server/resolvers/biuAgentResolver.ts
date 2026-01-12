@@ -1,47 +1,18 @@
-import { BiuAgentCsvService } from '../services/biuAgentCsvService';
+import { BiuAgentWrenQueryService } from '../services/biuAgentWrenQueryService';
 import { getLogger } from '@server/utils';
 import { GraphQLError } from 'graphql';
 import { IContext } from '../types';
-import path from 'path';
-import fs from 'fs';
 
 const logger = getLogger('BiuAgentResolver');
 logger.level = 'debug';
 
 export class BiuAgentResolver {
-  private csvService: BiuAgentCsvService;
-
-  constructor() {
-    // Initialize with path to CSV data files
-    // Priority: 1. Environment variable, 2. Docker path, 3. Relative path
-    const dataPath =
-      process.env.BIU_AGENT_DATA_PATH ||
-      (fs.existsSync('/app/data') ? '/app/data' : null) ||
-      path.join(process.cwd(), '..', 'data') ||
-      path.join(process.cwd(), 'data');
-
-    logger.info(`Initializing BiuAgentResolver with data path: ${dataPath}`);
-    logger.info(`Current working directory: ${process.cwd()}`);
-    logger.info(`Data path exists: ${fs.existsSync(dataPath)}`);
-
-    this.csvService = new BiuAgentCsvService({
-      dataPath,
-    });
-
-    logger.info(`BiuAgentResolver initialized with CSV data path: ${dataPath}`);
-
-    // Bind methods
-    this.getCustomerDashboard = this.getCustomerDashboard.bind(this);
-    this.getCustomerProfile = this.getCustomerProfile.bind(this);
-    this.getFinancialSummary = this.getFinancialSummary.bind(this);
-    this.getRecentActivity = this.getRecentActivity.bind(this);
-    this.getAccountOverview = this.getAccountOverview.bind(this);
-    this.getProductHoldings = this.getProductHoldings.bind(this);
-    this.getCreditCardSummary = this.getCreditCardSummary.bind(this);
-    this.getInvestmentData = this.getInvestmentData.bind(this);
-    this.searchCustomers = this.searchCustomers.bind(this);
-    this.getAllCustomerIds = this.getAllCustomerIds.bind(this);
-    this.chatQuery = this.chatQuery.bind(this);
+  /**
+   * Get wren query service instance using context
+   * This service uses wren's existing project database connection
+   */
+  private getWrenQueryService(ctx: IContext): BiuAgentWrenQueryService {
+    return new BiuAgentWrenQueryService(ctx);
   }
 
   /**
@@ -55,7 +26,8 @@ export class BiuAgentResolver {
     const { customerId } = args;
     logger.debug(`Fetching customer dashboard for customerId: ${customerId}`);
     try {
-      // Fetch all dashboard data in parallel
+      // Fetch all dashboard data in parallel using wren's database connection
+      const wrenQueryService = this.getWrenQueryService(_ctx);
       const [
         profile,
         financialSummary,
@@ -65,13 +37,13 @@ export class BiuAgentResolver {
         creditCardSummary,
         investmentData,
       ] = await Promise.all([
-        this.csvService.getCustomerProfile(customerId),
-        this.csvService.getFinancialSummary(customerId),
-        this.csvService.getRecentActivity(customerId, 10),
-        this.csvService.getAccountOverview(customerId),
-        this.csvService.getProductHoldings(customerId),
-        this.csvService.getCreditCardSummary(customerId),
-        this.csvService.getInvestmentData(customerId),
+        wrenQueryService.getCustomerProfile(customerId),
+        wrenQueryService.getFinancialSummary(customerId),
+        wrenQueryService.getRecentActivity(customerId, 10),
+        wrenQueryService.getAccountOverview(customerId),
+        wrenQueryService.getProductHoldings(customerId),
+        wrenQueryService.getCreditCardSummary(customerId),
+        wrenQueryService.getInvestmentData(customerId),
       ]);
 
       return {
@@ -107,7 +79,8 @@ export class BiuAgentResolver {
   ) {
     const { customerId } = args;
     try {
-      const profile = await this.csvService.getCustomerProfile(customerId);
+      const wrenQueryService = this.getWrenQueryService(_ctx);
+      const profile = await wrenQueryService.getCustomerProfile(customerId);
 
       if (!profile) {
         throw new GraphQLError(`Customer not found: ${customerId}`, {
@@ -140,7 +113,8 @@ export class BiuAgentResolver {
   ) {
     const { customerId } = args;
     try {
-      const summary = await this.csvService.getFinancialSummary(customerId);
+      const wrenQueryService = this.getWrenQueryService(_ctx);
+      const summary = await wrenQueryService.getFinancialSummary(customerId);
 
       if (!summary) {
         // Return zero values if no data found
@@ -175,7 +149,8 @@ export class BiuAgentResolver {
   ) {
     const { customerId, limit = 10 } = args;
     try {
-      return await this.csvService.getRecentActivity(
+      const wrenQueryService = this.getWrenQueryService(_ctx);
+      return await wrenQueryService.getRecentActivity(
         customerId,
         Math.min(limit, 100), // Cap at 100
       );
@@ -197,7 +172,8 @@ export class BiuAgentResolver {
   ) {
     const { customerId } = args;
     try {
-      return await this.csvService.getAccountOverview(customerId);
+      const wrenQueryService = this.getWrenQueryService(_ctx);
+      return await wrenQueryService.getAccountOverview(customerId);
     } catch (error) {
       logger.error(`Error fetching account overview: ${error}`);
       throw new GraphQLError(
@@ -216,7 +192,8 @@ export class BiuAgentResolver {
   ) {
     const { customerId } = args;
     try {
-      return await this.csvService.getProductHoldings(customerId);
+      const wrenQueryService = this.getWrenQueryService(_ctx);
+      return await wrenQueryService.getProductHoldings(customerId);
     } catch (error) {
       logger.error(`Error fetching product holdings: ${error}`);
       throw new GraphQLError(
@@ -235,7 +212,8 @@ export class BiuAgentResolver {
   ) {
     const { customerId } = args;
     try {
-      return await this.csvService.getCreditCardSummary(customerId);
+      const wrenQueryService = this.getWrenQueryService(_ctx);
+      return await wrenQueryService.getCreditCardSummary(customerId);
     } catch (error) {
       logger.error(`Error fetching credit card summary: ${error}`);
       // Return null if no credit cards found
@@ -253,7 +231,8 @@ export class BiuAgentResolver {
   ) {
     const { customerId } = args;
     try {
-      return await this.csvService.getInvestmentData(customerId);
+      const wrenQueryService = this.getWrenQueryService(_ctx);
+      return await wrenQueryService.getInvestmentData(customerId);
     } catch (error) {
       logger.error(`Error fetching investment data: ${error}`);
       return [];
@@ -274,7 +253,8 @@ export class BiuAgentResolver {
         return [];
       }
 
-      return await this.csvService.searchCustomers(searchTerm.trim());
+      const wrenQueryService = this.getWrenQueryService(_ctx);
+      return await wrenQueryService.searchCustomers(searchTerm.trim());
     } catch (error) {
       logger.error(`Error searching customers: ${error}`);
       throw new GraphQLError(`Failed to search customers: ${error.message}`);
@@ -286,7 +266,8 @@ export class BiuAgentResolver {
    */
   public async getAllCustomerIds(_root: any, _args: any, _ctx: IContext) {
     try {
-      return await this.csvService.getAllCustomerIds();
+      const wrenQueryService = this.getWrenQueryService(_ctx);
+      return await wrenQueryService.getAllCustomerIds();
     } catch (error) {
       logger.error(`Error fetching customer IDs: ${error}`);
       throw new GraphQLError(`Failed to fetch customer IDs: ${error.message}`);
