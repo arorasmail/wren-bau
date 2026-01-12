@@ -2,6 +2,11 @@ import { BiuAgentWrenQueryService } from '../services/biuAgentWrenQueryService';
 import { getLogger } from '@server/utils';
 import { GraphQLError } from 'graphql';
 import { IContext } from '../types';
+import {
+  AskResultStatus,
+  AskResultType,
+  WrenAILanguage,
+} from '../models/adaptor';
 
 const logger = getLogger('BiuAgentResolver');
 logger.level = 'debug';
@@ -290,7 +295,8 @@ export class BiuAgentResolver {
   }
 
   /**
-   * Handle chat queries and return formatted responses based on customer data
+   * Handle chat queries using wren's text-to-SQL capability with customer context
+   * This uses wren's asking service to generate SQL and get answers
    */
   public async chatQuery(
     _root: any,
@@ -299,6 +305,162 @@ export class BiuAgentResolver {
   ) {
     const { customerId, question } = args;
     logger.debug(`Chat query for customer ${customerId}: ${question}`);
+
+    try {
+      // Get customer profile to add context
+      const wrenQueryService = this.getWrenQueryService(_ctx);
+      const customerProfile = await wrenQueryService.getCustomerProfile(
+        customerId,
+      );
+
+      if (!customerProfile) {
+        return `I couldn't find customer ${customerId}. Please verify the customer ID.`;
+      }
+
+      // Enhance question with customer context for wren's AI
+      // This helps the AI understand it should filter by customer_id
+      const enhancedQuestion = `For customer ${customerId} (${customerProfile.customerName || 'customer'}): ${question}`;
+
+      // Use wren's asking service to create an asking task
+      const askingService = _ctx.askingService;
+      const project = await _ctx.projectService.getCurrentProject();
+
+      // Create asking task (generates SQL from natural language)
+      const task = await askingService.createAskingTask(
+        { question: enhancedQuestion },
+        {
+          language:
+            WrenAILanguage[project.language] || WrenAILanguage.EN,
+        },
+      );
+
+      // Poll for the asking task result
+      const deadline = Date.now() + 60000; // 60 second timeout
+      let askResult;
+      while (true) {
+        askResult = await askingService.getAskingTask(task.id);
+        if (!askResult) {
+          return `Sorry, I couldn't process your question. Please try again.`;
+        }
+
+        if (
+          askResult.status === AskResultStatus.FINISHED ||
+          askResult.status === AskResultStatus.FAILED ||
+          askResult.status === AskResultStatus.STOPPED
+        ) {
+          break;
+        }
+
+        if (Date.now() > deadline) {
+          return `Sorry, the query timed out. Please try again with a more specific question.`;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // Poll every second
+      }
+
+      // Check if task failed
+      if (
+        askResult.status === AskResultStatus.FAILED ||
+        askResult.status === AskResultStatus.STOPPED
+      ) {
+        return `Sorry, I couldn't process your question. ${askResult.error?.message || 'Please try rephrasing your question.'}`;
+      }
+
+      // If it's not a TEXT_TO_SQL type, return a general response
+      if (askResult.type !== AskResultType.TEXT_TO_SQL) {
+        return `I understand you're asking about customer ${customerId}. For more specific information, please try asking about their accounts, transactions, or financial summary.`;
+      }
+
+      // Get the generated SQL and ensure it filters by customer_id
+      const sql = askResult.candidates?.[0]?.sql;
+      if (!sql) {
+        return `I couldn't generate a query for your question. Please try rephrasing it.`;
+      }
+
+      // Ensure SQL includes customer_id filter
+      let finalSql = sql;
+      if (!sql.toLowerCase().includes(`customer_id = '${customerId}'`)) {
+        // Try to add WHERE clause with customer_id filter
+        // This is a simple approach - in production, you might want more sophisticated SQL parsing
+        if (sql.toLowerCase().includes('where')) {
+          finalSql = sql.replace(
+            /where/gi,
+            `WHERE customer_id = '${customerId}' AND`,
+          );
+        } else {
+          // Add WHERE clause
+          const sqlUpper = sql.toUpperCase();
+          const fromIndex = sqlUpper.indexOf('FROM');
+          if (fromIndex !== -1) {
+            const beforeFrom = sql.substring(0, fromIndex);
+            const afterFrom = sql.substring(fromIndex);
+            finalSql = `${beforeFrom} ${afterFrom} WHERE customer_id = '${customerId}'`;
+          }
+        }
+      }
+
+      // Execute the SQL query using wren's query service
+      const queryResult = await wrenQueryService.executeQuery(finalSql, 100);
+
+      if (!queryResult || queryResult.length === 0) {
+        return `I found no data matching your query for customer ${customerId}.`;
+      }
+
+      // Format the response based on the query result
+      if (queryResult.length === 1) {
+        const result = queryResult[0];
+        const keys = Object.keys(result);
+        let response = `Here's what I found for customer ${customerProfile.customerName || customerId}:\n\n`;
+        keys.forEach((key) => {
+          const value = result[key];
+          if (value !== null && value !== undefined) {
+            const formattedKey = key
+              .replace(/([A-Z])/g, ' $1')
+              .replace(/^./, (str) => str.toUpperCase())
+              .trim();
+            response += `- ${formattedKey}: ${value}\n`;
+          }
+        });
+        return response;
+      } else {
+        // Multiple results
+        let response = `I found ${queryResult.length} results for customer ${customerProfile.customerName || customerId}:\n\n`;
+        queryResult.slice(0, 10).forEach((result, index) => {
+          response += `Result ${index + 1}:\n`;
+          Object.keys(result).forEach((key) => {
+            const value = result[key];
+            if (value !== null && value !== undefined) {
+              const formattedKey = key
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/^./, (str) => str.toUpperCase())
+                .trim();
+              response += `  - ${formattedKey}: ${value}\n`;
+            }
+          });
+          response += '\n';
+        });
+        if (queryResult.length > 10) {
+          response += `... and ${queryResult.length - 10} more results.`;
+        }
+        return response;
+      }
+    } catch (error) {
+      logger.error(`Error processing chat query: ${error}`);
+      return `I encountered an error while processing your query: ${error.message}. Please try again or verify the customer ID.`;
+    }
+  }
+
+  /**
+   * Legacy chat query handler (kept for backward compatibility)
+   * This uses keyword matching - consider using chatQuery instead
+   */
+  public async chatQueryLegacy(
+    _root: any,
+    args: { customerId: string; question: string },
+    _ctx: IContext,
+  ) {
+    const { customerId, question } = args;
+    logger.debug(`Legacy chat query for customer ${customerId}: ${question}`);
 
     try {
       const questionLower = question.toLowerCase().trim();
