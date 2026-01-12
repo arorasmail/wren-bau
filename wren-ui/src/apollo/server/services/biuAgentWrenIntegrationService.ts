@@ -1,9 +1,7 @@
 import { getLogger } from '@server/utils';
 import { BiuAgentDuckDbService } from './biuAgentDuckDbService';
 import { ProjectService } from './projectService';
-import { IProjectRepository } from '../repositories';
 import { DataSourceName } from '../types';
-import { encryptConnectionInfo } from '../dataSource';
 
 const logger = getLogger('BiuAgentWrenIntegrationService');
 
@@ -15,10 +13,7 @@ export class BiuAgentWrenIntegrationService {
   private duckDbService: BiuAgentDuckDbService;
   private projectService: ProjectService;
 
-  constructor(
-    dataPath: string,
-    projectService: ProjectService,
-  ) {
+  constructor(dataPath: string, projectService: ProjectService) {
     this.duckDbService = new BiuAgentDuckDbService({ dataPath });
     this.projectService = projectService;
   }
@@ -37,7 +32,9 @@ export class BiuAgentWrenIntegrationService {
 
       // Generate DuckDB initSql from CSV files
       const initSql = this.duckDbService.generateInitSql();
-      logger.debug(`Generated initSql with ${initSql.split('\n').length} statements`);
+      logger.debug(
+        `Generated initSql with ${initSql.split('\n').length} statements`,
+      );
 
       // Create wren project with DuckDB data source
       const project = await this.projectService.createProject({
@@ -74,4 +71,3 @@ export class BiuAgentWrenIntegrationService {
     return this.duckDbService.getDuckDbConnectionConfig();
   }
 }
-

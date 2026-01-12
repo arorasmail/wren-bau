@@ -58,7 +58,7 @@ export class BiuAgentDuckDbService {
       // Use auto_detect for schema inference, but you can also specify explicit schema
       // Example with explicit schema:
       // const statement = `CREATE TABLE ${tableName} AS SELECT * FROM read_csv('${absolutePath}', header=true, columns={'column1': 'VARCHAR', 'column2': 'INTEGER'});`;
-      
+
       const statement = `CREATE TABLE ${tableName} AS SELECT * FROM read_csv('${absolutePath}', header=true, auto_detect=true);`;
       initSqlStatements.push(statement);
     });
@@ -104,4 +104,3 @@ export class BiuAgentDuckDbService {
     };
   }
 }
-

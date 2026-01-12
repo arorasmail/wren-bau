@@ -15,6 +15,21 @@ export class BiuAgentResolver {
     return new BiuAgentWrenQueryService(ctx);
   }
 
+  constructor() {
+    // Bind methods to preserve 'this' context when used as GraphQL resolvers
+    this.getCustomerDashboard = this.getCustomerDashboard.bind(this);
+    this.getCustomerProfile = this.getCustomerProfile.bind(this);
+    this.getFinancialSummary = this.getFinancialSummary.bind(this);
+    this.getRecentActivity = this.getRecentActivity.bind(this);
+    this.getAccountOverview = this.getAccountOverview.bind(this);
+    this.getProductHoldings = this.getProductHoldings.bind(this);
+    this.getCreditCardSummary = this.getCreditCardSummary.bind(this);
+    this.getInvestmentData = this.getInvestmentData.bind(this);
+    this.searchCustomers = this.searchCustomers.bind(this);
+    this.getAllCustomerIds = this.getAllCustomerIds.bind(this);
+    this.chatQuery = this.chatQuery.bind(this);
+  }
+
   /**
    * Get comprehensive customer dashboard
    */

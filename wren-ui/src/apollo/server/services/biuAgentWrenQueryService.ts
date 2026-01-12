@@ -30,11 +30,13 @@ export class BiuAgentWrenQueryService {
     try {
       // Get current wren project
       const project = await this.projectService.getCurrentProject();
-      
-      // Get MDL manifest for the project
-      const manifest = await this.mdlService.getMDL(project.id);
 
-      logger.debug(`Executing query against project: ${project.id}, type: ${project.type}`);
+      // Get MDL manifest for the current project
+      const { manifest } = await this.mdlService.makeCurrentModelMDL();
+
+      logger.debug(
+        `Executing query against project: ${project.id}, type: ${project.type}`,
+      );
       logger.debug(`SQL: ${sql}`);
 
       // Use wren's QueryService to execute the query
@@ -48,10 +50,15 @@ export class BiuAgentWrenQueryService {
       });
 
       // Transform result to array of objects
-      if (result && typeof result === 'object' && 'data' in result && 'columns' in result) {
+      if (
+        result &&
+        typeof result === 'object' &&
+        'data' in result &&
+        'columns' in result
+      ) {
         const columns = result.columns.map((col: any) => col.name || col);
         const data = result.data || [];
-        
+
         return data.map((row: any[]) => {
           const obj: any = {};
           columns.forEach((col: string, index: number) => {
@@ -71,9 +78,7 @@ export class BiuAgentWrenQueryService {
   /**
    * Execute a query and return a single row
    */
-  public async executeQueryOne<T = any>(
-    sql: string,
-  ): Promise<T | null> {
+  public async executeQueryOne<T = any>(sql: string): Promise<T | null> {
     const results = await this.executeQuery<T>(sql, 1);
     return results.length > 0 ? results[0] : null;
   }
@@ -228,7 +233,10 @@ export class BiuAgentWrenQueryService {
    * Search customers using wren's database connection
    */
   public async searchCustomers(searchTerm: string) {
-    const escapedSearchTerm = searchTerm.replace(/'/g, "''").replace(/%/g, "\\%").replace(/_/g, "\\_");
+    const escapedSearchTerm = searchTerm
+      .replace(/'/g, "''")
+      .replace(/%/g, '\\%')
+      .replace(/_/g, '\\_');
     const sql = `
       SELECT 
         customer_id as "customerId",
@@ -259,4 +267,3 @@ export class BiuAgentWrenQueryService {
     return results.map((r) => r.customerId);
   }
 }
-
