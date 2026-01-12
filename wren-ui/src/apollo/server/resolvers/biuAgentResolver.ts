@@ -6,7 +6,9 @@ import {
   AskResultStatus,
   AskResultType,
   WrenAILanguage,
+  AskResult,
 } from '../models/adaptor';
+import { isAskResultFinished, MAX_WAIT_TIME } from '../utils/apiUtils';
 
 const logger = getLogger('BiuAgentResolver');
 logger.level = 'debug';
@@ -334,29 +336,41 @@ export class BiuAgentResolver {
         },
       );
 
-      // Poll for the asking task result
-      const deadline = Date.now() + 60000; // 60 second timeout
-      let askResult;
-      while (true) {
-        askResult = await askingService.getAskingTask(task.id);
-        if (!askResult) {
-          return `Sorry, I couldn't process your question. Please try again.`;
-        }
+      // Poll directly using wrenAIAdaptor (same as wren's API endpoints)
+      // This ensures we get real-time updates without waiting for background polling
+      const wrenAIAdaptor = _ctx.wrenAIAdaptor;
+      const deadline = Date.now() + MAX_WAIT_TIME;
+      let askResult: AskResult;
+      let pollCount = 0;
 
-        if (
-          askResult.status === AskResultStatus.FINISHED ||
-          askResult.status === AskResultStatus.FAILED ||
-          askResult.status === AskResultStatus.STOPPED
-        ) {
+      logger.debug(`Starting to poll for ask result with queryId: ${task.id}`);
+
+      while (true) {
+        // Poll directly from wren-ai-service (same approach as /api/v1/ask)
+        askResult = await wrenAIAdaptor.getAskResult(task.id);
+        pollCount++;
+
+        logger.debug(
+          `Polling ask result (${pollCount}): status=${askResult.status}, type=${askResult.type}`,
+        );
+
+        // Check if the result is finished (same logic as wren's API)
+        if (isAskResultFinished(askResult)) {
           break;
         }
 
+        // Check timeout
         if (Date.now() > deadline) {
-          return `Sorry, the query timed out. Please try again with a more specific question.`;
+          return `Sorry, the query timed out after ${pollCount} attempts. Please try again with a more specific question.`;
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 1000)); // Poll every second
+        // Wait before polling again (same as wren's API)
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
+
+      logger.debug(
+        `Ask result finished: status=${askResult.status}, type=${askResult.type}`,
+      );
 
       // Check if task failed
       if (
@@ -372,7 +386,8 @@ export class BiuAgentResolver {
       }
 
       // Get the generated SQL and ensure it filters by customer_id
-      const sql = askResult.candidates?.[0]?.sql;
+      // AskResult.response is an array of candidates with sql property
+      const sql = askResult.response?.[0]?.sql;
       if (!sql) {
         return `I couldn't generate a query for your question. Please try rephrasing it.`;
       }
