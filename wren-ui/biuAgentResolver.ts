@@ -16,7 +16,7 @@ logger.level = 'debug';
 
 export class BiuAgentResolver {
   /**
-   * Get wren query service instance using context
+   *   Get wren query service instance using context
    * This service uses wren's existing project database connection
    */
   private getWrenQueryService(ctx: IContext): BiuAgentWrenQueryService {
