@@ -380,9 +380,151 @@ export class BiuAgentResolver {
         return `Sorry, I couldn't process your question. ${askResult.error?.message || 'Please try rephrasing your question.'}`;
       }
 
-      // If it's not a TEXT_TO_SQL type, return a general response
-      if (askResult.type !== AskResultType.TEXT_TO_SQL) {
-        return `I understand you're asking about customer ${customerId}. For more specific information, please try asking about their accounts, transactions, or financial summary.`;
+      // Handle GENERAL type queries (like discussion points, recommendations, etc.)
+      if (askResult.type === AskResultType.GENERAL) {
+        // Get the streaming explanation from wren-ai-service
+        let explanation = '';
+        try {
+          const stream = await _ctx.wrenAIAdaptor.getAskStreamingResult(
+            task.id,
+          );
+
+          // Collect the streamed content
+          const streamPromise = new Promise<void>((resolve, reject) => {
+            stream.on('data', (chunk) => {
+              const chunkString = chunk.toString('utf-8');
+              const match = chunkString.match(/data: {"message":"([\s\S]*?)"}/);
+              if (match && match[1]) {
+                explanation += match[1];
+              }
+            });
+
+            stream.on('end', () => {
+              resolve();
+            });
+
+            stream.on('error', (error) => {
+              reject(error);
+            });
+
+            // Timeout after 30 seconds
+            setTimeout(() => {
+              stream.destroy();
+              resolve(); // Resolve anyway to return partial explanation
+            }, 30000);
+          });
+
+          await streamPromise;
+        } catch (streamError) {
+          logger.warn(
+            `Failed to get streaming explanation: ${streamError.message}`,
+          );
+          // Continue with customer data even if streaming fails
+        }
+
+        // Enhance with customer-specific data insights
+        const customerData = await this.getCustomerDashboard(
+          _root,
+          { customerId },
+          _ctx,
+        );
+
+        if (!customerData || !customerData.profile) {
+          return (
+            explanation ||
+            `I understand you're asking about customer ${customerId}. For more specific information, please try asking about their accounts, transactions, or financial summary.`
+          );
+        }
+
+        // Build discussion points based on customer data
+        const profile = customerData.profile;
+        const financial = customerData.financialSummary;
+        const accounts = customerData.accountOverview || [];
+        const activities = customerData.recentActivity || [];
+        const products = customerData.productHoldings || [];
+
+        let response = `**Discussion Points for ${profile.customerName} (Customer ID: ${customerId})**\n\n`;
+
+        // Add AI-generated explanation if available
+        if (explanation) {
+          response += `${explanation}\n\n`;
+        }
+
+        // Add key customer insights
+        response += `**Key Customer Insights:**\n\n`;
+
+        // Profile highlights
+        response += `**1. Customer Profile:**\n`;
+        response += `- Customer Name: ${profile.customerName}\n`;
+        if (profile.segment)
+          response += `- Segment: ${profile.segment}\n`;
+        if (profile.riskProfile)
+          response += `- Risk Profile: ${profile.riskProfile}\n`;
+        if (profile.cibilScore)
+          response += `- CIBIL Score: ${profile.cibilScore}\n`;
+        if (profile.rmName)
+          response += `- Relationship Manager: ${profile.rmName}\n`;
+        if (profile.branchName) response += `- Branch: ${profile.branchName}\n`;
+        response += `\n`;
+
+        // Financial summary
+        if (financial) {
+          response += `**2. Financial Overview:**\n`;
+          response += `- Total Relationship Value: ₹${(
+            (financial.totalCasaBalance || 0) +
+            (financial.totalFdValue || 0) +
+            (financial.totalRdValue || 0) +
+            (financial.totalInvestmentValue || 0)
+          ).toLocaleString('en-IN')}\n`;
+          response += `- Total CASA Balance: ₹${(financial.totalCasaBalance || 0).toLocaleString('en-IN')}\n`;
+          response += `- Total Credit Limit: ₹${(financial.totalCreditLimit || 0).toLocaleString('en-IN')}\n`;
+          response += `- Credit Outstanding: ₹${(financial.totalCreditOutstanding || 0).toLocaleString('en-IN')}\n`;
+          response += `- Number of Accounts: ${financial.accountCount || 0}\n`;
+          response += `\n`;
+        }
+
+        // Recent activity highlights
+        if (activities.length > 0) {
+          response += `**3. Recent Activity:**\n`;
+          activities.slice(0, 3).forEach((activity) => {
+            response += `- ${activity.transactionDate}: ${activity.activityType} - ₹${(activity.amount || 0).toLocaleString('en-IN')}\n`;
+          });
+          response += `\n`;
+        }
+
+        // Product holdings
+        if (products.length > 0) {
+          response += `**4. Product Holdings:**\n`;
+          products.forEach((product) => {
+            response += `- ${product.productName} (${product.productType}) - ${product.status}\n`;
+          });
+          response += `\n`;
+        }
+
+        // Discussion suggestions based on data
+        response += `**Suggested Discussion Topics:**\n`;
+        if (financial && financial.totalCreditOutstanding > 0) {
+          response += `- Credit card utilization and payment options\n`;
+        }
+        if (financial && financial.totalInvestmentValue > 0) {
+          response += `- Investment portfolio review and opportunities\n`;
+        }
+        if (activities.length > 0) {
+          response += `- Recent transaction patterns and insights\n`;
+        }
+        if (accounts.length > 0) {
+          response += `- Account optimization and cross-selling opportunities\n`;
+        }
+
+        return response;
+      }
+
+      // Handle MISLEADING_QUERY type
+      if (askResult.type === AskResultType.MISLEADING_QUERY) {
+        const reasoning =
+          askResult.intentReasoning ||
+          `Please try rephrasing your question with more specific details about what you'd like to know about customer ${customerId}.`;
+        return `I couldn't understand your question clearly. ${reasoning}`;
       }
 
       // Get the generated SQL and ensure it filters by customer_id
