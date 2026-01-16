@@ -177,7 +177,25 @@ export const GET_ALL_CUSTOMER_IDS = gql`
 `;
 
 export const CHAT_QUERY = gql`
-  query ChatQuery($customerId: String!, $question: String!) {
-    chatQuery(customerId: $customerId, question: $question)
+  query ChatQuery($customerId: String!, $question: String!, $threadId: Int) {
+    chatQuery(customerId: $customerId, question: $question, threadId: $threadId) {
+      id
+      threadId
+      question
+      sql
+      askingTaskId
+      answerDetail {
+        status
+        queryId
+      }
+      breakdownDetail {
+        status
+        queryId
+      }
+      chartDetail {
+        status
+        queryId
+      }
+    }
   }
 `;
