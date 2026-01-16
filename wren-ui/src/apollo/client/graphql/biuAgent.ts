@@ -183,7 +183,15 @@ export const CHAT_QUERY = gql`
       threadId
       question
       sql
-      askingTaskId
+      askingTask {
+        status
+        type
+        queryId
+        error {
+          code
+          message
+        }
+      }
       answerDetail {
         status
         queryId
