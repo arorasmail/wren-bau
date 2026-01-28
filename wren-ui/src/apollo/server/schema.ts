@@ -1256,7 +1256,11 @@ export const typeDefs = gql`
     getInvestmentData(customerId: String!): [InvestmentData!]!
     searchCustomers(searchTerm: String!): [CustomerProfile!]!
     getAllCustomerIds: [String!]!
-    chatQuery(customerId: String!, question: String!, threadId: Int): ThreadResponse!
+    chatQuery(
+      customerId: String!
+      question: String!
+      threadId: Int
+    ): ThreadResponse!
   }
 
   type Mutation {

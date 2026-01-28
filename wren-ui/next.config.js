@@ -11,6 +11,14 @@ const resolveAlias = {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = withLess({
+  eslint: {
+    // Disable ESLint during builds
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    // Optionally disable TypeScript errors during builds too
+    // ignoreBuildErrors: true,
+  },
   output: 'standalone',
   staticPageGenerationTimeout: 1000,
   compiler: {

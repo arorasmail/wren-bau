@@ -106,7 +106,7 @@ export class BiuAgentWrenQueryService {
         phone,
         pan_number as "panNumber",
         customer_since as "customerSince"
-      FROM customers
+      FROM olist_customers_dataset
       WHERE customer_id = '${escapedCustomerId}'
       LIMIT 1
     `;
@@ -244,7 +244,7 @@ export class BiuAgentWrenQueryService {
         segment,
         location,
         phone
-      FROM customers
+      FROM olist_customers_dataset
       WHERE 
         customer_id ILIKE '%${escapedSearchTerm}%' OR
         customer_name ILIKE '%${escapedSearchTerm}%' OR
@@ -260,7 +260,7 @@ export class BiuAgentWrenQueryService {
   public async getAllCustomerIds(): Promise<string[]> {
     const sql = `
       SELECT DISTINCT customer_id as "customerId"
-      FROM customers
+      FROM olist_customers_dataset
       ORDER BY customer_id
     `;
     const results = await this.executeQuery<{ customerId: string }>(sql);

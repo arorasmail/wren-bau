@@ -4,7 +4,7 @@ import UserOutlined from '@ant-design/icons/UserOutlined';
 import SiderLayout from '@/components/layouts/SiderLayout';
 import useBiuAgentSidebar from '@/hooks/useBiuAgentSidebar';
 import { useGetCustomerProfileQuery } from '@/apollo/client/graphql/biuAgent.generated';
-import { useLazyQuery, useQuery } from '@apollo/client';
+import { useLazyQuery } from '@apollo/client';
 import { CHAT_QUERY } from '@/apollo/client/graphql/biuAgent';
 import Prompt from '@/components/pages/home/prompt';
 import PromptThread from '@/components/pages/home/promptThread';
@@ -33,7 +33,6 @@ import {
   CreateThreadResponseInput,
   AdjustThreadResponseChartInput,
 } from '@/apollo/client/graphql/__types__';
-import { SelectQuestionProps } from '@/components/pages/home/RecommendedQuestions';
 
 const { Title, Text } = Typography;
 
@@ -227,8 +226,7 @@ export default function BiuAgentChat() {
     (responses: ThreadResponse[]) => {
       const unfinishedAskingResponse = (responses || []).find(
         (response) =>
-          response?.askingTask &&
-          !getIsFinished(response?.askingTask?.status),
+          response?.askingTask && !getIsFinished(response?.askingTask?.status),
       );
       if (unfinishedAskingResponse) {
         askPrompt.onFetching(unfinishedAskingResponse?.askingTask?.queryId);
@@ -318,7 +316,8 @@ export default function BiuAgentChat() {
       },
       onOpenSaveAsViewModal: saveAsViewModal.openModal,
       onSelectRecommendedQuestion: onCreateResponse,
-      onGenerateThreadRecommendedQuestions: onGenerateThreadRecommendedQuestions,
+      onGenerateThreadRecommendedQuestions:
+        onGenerateThreadRecommendedQuestions,
       onGenerateTextBasedAnswer: onGenerateThreadResponseAnswer,
       onGenerateChartAnswer: onGenerateThreadResponseChart,
       onAdjustChartAnswer: onAdjustThreadResponseChart,
